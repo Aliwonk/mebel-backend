@@ -63,7 +63,7 @@ const generateUniqueFileName = (file: Express.Multer.File): string => {
     }
   }
 
-  return `${nameWithoutExtension}_${timestamp}_${randomString}.${fileExtension}`;
+  return `${timestamp}_${randomString}.${fileExtension}`;
 };
 
 const storageImage = diskStorage({
