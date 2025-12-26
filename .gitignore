@@ -1,0 +1,5 @@
+dashboard
+dist
+frontend
+node_modules
+.env
