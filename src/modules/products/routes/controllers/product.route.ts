@@ -16,9 +16,12 @@ import { Guard } from "../../../../utils/security.util";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { readFile, unlink, writeFile } from "node:fs/promises";
+import TelegramAPI from "../../../../utils/telegramAPI.util";
+import TelegramGroupModel from "../../../telegram/models/group.model";
 
 const productRoute = Router();
 configDotenv({ quiet: true });
+const telegram: TelegramAPI = new TelegramAPI(String(process.env.BOT_TOKEN));
 const upload = multer({
   storage: storageImage,
   fileFilter: imageFileFilter,
@@ -117,8 +120,9 @@ productRoute.post(
         { transaction }
       );
 
+      let images: Array<{ url: string; size: number; product_id: number }> = [];
       if (req.files && (req.files as Express.Multer.File[]).length > 0) {
-        const images = (req.files as Express.Multer.File[]).map((file) => ({
+        images = (req.files as Express.Multer.File[]).map((file) => ({
           url: `${process.env.SERVER_URL}/product/image/${file.filename}`,
           size: file.size,
           product_id: product.dataValues.id,
@@ -134,7 +138,91 @@ productRoute.post(
       await productCategory.addProduct(product, { transaction });
       await productManufacturer.addProduct(product, { transaction });
 
-      await transaction.commit();
+      // Отправка уведолмение в телеграм бот
+
+      if (productData.telegram_notification) {
+        const telegramGroups: Array<TelegramGroupModel> =
+          await TelegramGroupModel.findAll();
+
+        if (telegramGroups.length > 0) {
+          const telegramGroup: TelegramGroupModel = telegramGroups[0];
+
+          // Формируем сообщение с информацией о товаре
+          const message =
+            `🎉 *Добавлен товар!*\n\n` +
+            `📦 *Название:* ${productData.name}\n` +
+            `💰 *Цена:* ${productData.price} руб.\n` +
+            `📝 *Описание:* ${productData.description || "Нет описания"}\n` +
+            `📏 *Размеры:* ${productData.dimensions?.length || 0}x${
+              productData.dimensions?.width || 0
+            }x${productData.dimensions?.height || 0} см`;
+
+          const keyboard = {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Посмотреть товар",
+                  callback_data: `product_${product.dataValues.id}`,
+                },
+                {
+                  text: "🌐 Открыть на сайте",
+                  url: `${"https://mebelmodnostilno.ru"}/product/${
+                    product.dataValues.id
+                  }`,
+                },
+              ],
+            ],
+          };
+
+          let telegramResult;
+
+          if (images.length > 0) {
+            if (images.length === 1) {
+              // Если фото одно - отправляем с подписью и кнопками
+              telegramResult = await telegram.sendPhotoWithCaption(
+                Number(telegramGroup.dataValues.chat_id),
+                images[0].url,
+                message,
+                keyboard
+              );
+            } else {
+              // Если фото несколько - отправляем альбом
+              const media = images.map((image, index) => ({
+                type: "photo",
+                media: image.url,
+                caption: index === 0 ? message : undefined, // Подпись только у первого фото
+                parse_mode: "Markdown",
+              }));
+
+              telegramResult = await telegram.sendMediaGroup(
+                Number(telegramGroup.dataValues.chat_id),
+                media
+              );
+
+              // После альбома отправляем сообщение с кнопками
+              if (telegramResult.ok) {
+                const buttonsMessage = `📸 *Фотографии товара*\n\nДля деталей нажмите кнопку ниже 👇`;
+                await telegram.sendMessageWithInlineKeyboard(
+                  Number(telegramGroup.dataValues.chat_id),
+                  buttonsMessage,
+                  keyboard
+                );
+              }
+            }
+          } else {
+            // Если фото нет - отправляем только текстовое сообщение
+            telegramResult = await telegram.sendMessageWithInlineKeyboard(
+              Number(telegramGroup.dataValues.chat_id),
+              message,
+              keyboard
+            );
+          }
+
+          console.log("Telegram отправлено:", telegramResult);
+        }
+      }
+
+      // await transaction.commit();
       res.status(201).send({ message: "Товар создан" });
     } catch (error) {
       await transaction.rollback();

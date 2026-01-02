@@ -28,4 +28,5 @@ export interface ProductRequestInterface {
   manufacturer_id: number | undefined;
   manufacturer: any;
   dimensions: ProductDimensionInterface;
+  telegram_notification: boolean;
 }

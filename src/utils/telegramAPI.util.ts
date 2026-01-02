@@ -1,59 +1,114 @@
 class TelegramAPI {
   #URL: string = "https://api.telegram.org";
-  #API_KEY: string | null = "8463226469:AAHjMi20nljog9DASopekM4_DNzap433hkU";
+  #API_KEY: string | null = null;
+
   constructor(API_KEY: string) {
     this.#API_KEY = API_KEY;
   }
 
-  async sendMessageWithInlineKeyboard(
+  // Метод для отправки фото с подписью и клавиатурой
+  async sendPhotoWithCaption(
     chat_id: number,
-    message: any,
-    keyboard: any
+    photo: string,
+    caption: string = "",
+    keyboard?: any
   ): Promise<any> {
     try {
-//       const message = `
-//           *🛍 НОВЫЙ ТОВАР*
-// *Название:* ${body.name}
-// *Цена:* \`${body.price}₽\`
-// *Категория:* ${body.category.name}`;
-//       const keyboard = {
-//         inline_keyboard: [
-//           [
-//             { text: "✅ Посмотреть", callback_data: "approve_123" },
-//             {
-//               text: "🌐 Открыть WebApp",
-//               web_app: {
-//                 url: "https://ваш-сайт.ру/app",
-//               },
-//             },
-//           ],
-//         ],
-//       };
-//       if (body.telegram_notification) {
-//         const resultNotification =
-//           await telegramAPI.sendMessageWithInlineKeyboard(
-//             -1003304218563,
-//             message,
-//             keyboard
-//           );
-//         const data = await resultNotification.json();
-//         console.log(data);
-//       }
-      return await fetch(`${this.#URL}/bot${this.#API_KEY}/sendMessage`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          chat_id,
-          text: message,
-          parse_mode: "Markdown",
-          reply_markup: keyboard,
-          disable_web_page_preview: true,
-        }),
-      });
+      const payload: any = {
+        chat_id,
+        photo,
+        caption,
+        parse_mode: "Markdown",
+      };
+
+      if (keyboard) {
+        payload.reply_markup = keyboard;
+      }
+
+      const response = await fetch(
+        `${this.#URL}/bot${this.#API_KEY}/sendPhoto`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await response.json();
     } catch (error) {
-      console.log(error);
+      console.error("Telegram API Error:", error);
+      throw error;
+    }
+  }
+
+  // Метод для отправки альбома (несколько фото)
+  async sendMediaGroup(
+    chat_id: number,
+    media: Array<any>,
+    keyboard?: any
+  ): Promise<any> {
+    try {
+      const payload: any = {
+        chat_id,
+        media: JSON.stringify(media),
+      };
+
+      if (keyboard) {
+        payload.reply_markup = keyboard;
+      }
+
+      const response = await fetch(
+        `${this.#URL}/bot${this.#API_KEY}/sendMediaGroup`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await response.json();
+    } catch (error) {
+      console.error("Telegram API Error:", error);
+      throw error;
+    }
+  }
+
+  // Метод для отправки обычного сообщения с клавиатурой
+  async sendMessageWithInlineKeyboard(
+    chat_id: number,
+    message: string,
+    keyboard?: any
+  ): Promise<any> {
+    try {
+      const payload: any = {
+        chat_id,
+        text: message,
+        parse_mode: "Markdown",
+      };
+
+      if (keyboard) {
+        payload.reply_markup = keyboard;
+      }
+
+      const response = await fetch(
+        `${this.#URL}/bot${this.#API_KEY}/sendMessage`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      return await response.json();
+    } catch (error) {
+      console.error("Telegram API Error:", error);
+      throw error;
     }
   }
 }
