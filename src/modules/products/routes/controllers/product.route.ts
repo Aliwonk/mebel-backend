@@ -160,12 +160,12 @@ productRoute.post(
           const keyboard = {
             inline_keyboard: [
               [
+                // {
+                //   text: "✅ Посмотреть товар",
+                //   callback_data: `product_${product.dataValues.id}`,
+                // },
                 {
-                  text: "✅ Посмотреть товар",
-                  callback_data: `product_${product.dataValues.id}`,
-                },
-                {
-                  text: "🌐 Открыть на сайте",
+                  text: "✅ Посмотреть това",
                   url: `${"https://mebelmodnostilno.ru"}/product/${
                     product.dataValues.id
                   }`,
