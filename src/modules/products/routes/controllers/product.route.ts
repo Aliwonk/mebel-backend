@@ -222,7 +222,7 @@ productRoute.post(
         }
       }
 
-      // await transaction.commit();
+      await transaction.commit();
       res.status(201).send({ message: "Товар создан" });
     } catch (error) {
       await transaction.rollback();
