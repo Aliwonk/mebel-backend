@@ -112,6 +112,8 @@ productRoute.post(
         { transaction }
       );
 
+      console.log("Характеристики: ", productData.dimensions);
+
       await ProductDimensionModel.create(
         {
           ...productData.dimensions,
@@ -148,27 +150,31 @@ productRoute.post(
           const telegramGroup: TelegramGroupModel = telegramGroups[0];
 
           // Формируем сообщение с информацией о товаре
+          const categoryName = productCategory.dataValues.name.replace(
+            /\s/g,
+            ""
+          );
+          const manufacturerName = productManufacturer.dataValues.name.replace(
+            /\s/g,
+            ""
+          );
           const message =
-            `🎉 *Добавлен товар!*\n\n` +
+            `🎉 *Добавлен товар!* #${categoryName} #${manufacturerName} \n\n` +
             `📦 *Название:* ${productData.name}\n` +
-            `💰 *Цена:* ${productData.price} руб.\n` +
-            `📝 *Описание:* ${productData.description || "Нет описания"}\n` +
-            `📏 *Размеры:* ${productData.dimensions?.length || 0}x${
-              productData.dimensions?.width || 0
-            }x${productData.dimensions?.height || 0} см`;
+            `💰 *Цена:* ${productData.price} руб.\n\n` +
+            `📝 *Описание:*\n ${
+              productData.description || "Нет описания"
+            }\n\n` +
+            `📏 *Размеры (ШxГxВ):* ${productData.dimensions?.width || 0}x${
+              productData.dimensions?.depth || 0
+            }x${productData.dimensions?.height || 0} мм`;
 
           const keyboard = {
             inline_keyboard: [
               [
-                // {
-                //   text: "✅ Посмотреть товар",
-                //   callback_data: `product_${product.dataValues.id}`,
-                // },
                 {
-                  text: "✅ Посмотреть това",
-                  url: `${"https://mebelmodnostilno.ru"}/product/${
-                    product.dataValues.id
-                  }`,
+                  text: "✅ Посмотреть товар",
+                  url: `${process.env.CLIENT_URL}/product/${product.dataValues.id}`,
                 },
               ],
             ],
@@ -201,7 +207,7 @@ productRoute.post(
 
               // После альбома отправляем сообщение с кнопками
               if (telegramResult.ok) {
-                const buttonsMessage = `📸 *Фотографии товара*\n\nДля деталей нажмите кнопку ниже 👇`;
+                const buttonsMessage = `Для деталей нажмите кнопку ниже 👇`;
                 await telegram.sendMessageWithInlineKeyboard(
                   Number(telegramGroup.dataValues.chat_id),
                   buttonsMessage,
@@ -217,8 +223,6 @@ productRoute.post(
               keyboard
             );
           }
-
-          console.log("Telegram отправлено:", telegramResult);
         }
       }
 
@@ -294,14 +298,6 @@ productRoute.get("/all", async (req: Request, res: Response) => {
       if (max_price) whereConditions.price[Op.lte] = Number(max_price);
     }
 
-    // Поиск
-    if (search) {
-      whereConditions[Op.or] = [
-        { name: { [Op.iLike]: `%${search}%` } },
-        { description: { [Op.iLike]: `%${search}%` } },
-      ];
-    }
-
     if (Object.keys(whereConditions).length > 0) {
       queryOptions.where = whereConditions;
     }
@@ -326,6 +322,50 @@ productRoute.get("/all", async (req: Request, res: Response) => {
 
     queryOptions.distinct = true;
 
+    if (search) {
+      const products = await ProductModel.findAll({
+        where: {
+          name: { [Op.like]: `%${search}%` },
+        },
+        include: [
+          {
+            model: ProductCategoryModel,
+            as: "categories",
+            through: { attributes: [] },
+            attributes: ["id", "name"],
+            include: [
+              {
+                model: ProductCatalogModel,
+                as: "catalogs",
+                through: { attributes: [] },
+                attributes: ["id", "name"],
+              },
+            ],
+          },
+          {
+            model: ProductManufacturerModel,
+            as: "manufacturers",
+            through: { attributes: [] },
+            attributes: ["id", "name"],
+          },
+          {
+            model: ProductDimensionModel,
+            as: "dimensions",
+          },
+          {
+            model: ProductImageModel,
+            as: "images",
+          },
+        ],
+      });
+      return res.status(200).send({
+        data: products,
+        count: products.length,
+        page: Number(page),
+        totalPages: Math.ceil(products.length / Number(limit)),
+      });
+    }
+
     if (all) {
       const products = await ProductModel.findAll(queryOptions);
       return res.status(200).send({
@@ -340,7 +380,7 @@ productRoute.get("/all", async (req: Request, res: Response) => {
 
       const products = await ProductModel.findAndCountAll(queryOptions);
 
-      res.status(200).send({
+      return res.status(200).send({
         data: products.rows,
         count: products.count,
         page: Number(page),
