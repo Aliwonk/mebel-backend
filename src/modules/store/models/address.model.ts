@@ -4,6 +4,7 @@ import sequelizePOSTGRES from "../../../configs/db.config";
 class StoreAddressModel extends Model {
   public id!: number;
   public address!: string;
+  public hours!: string;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -22,6 +23,12 @@ StoreAddressModel.init(
       validate: {
         notEmpty: { msg: "Адрес не может быть пустой строкой" },
         notNull: { msg: "Адрес не может быть пустым" },
+      },
+    },
+    hours: {
+      type: DataTypes.STRING(250),
+      validate: {
+        notEmpty: { msg: "Часы работы не может быть пустой строкой" },
       },
     },
   },

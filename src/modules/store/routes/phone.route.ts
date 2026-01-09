@@ -12,7 +12,7 @@ storePhoneRoute.post(
   Guard,
   async (req: Request, res: Response) => {
     try {
-      const { phone, name } = req.body;
+      const { phone, name, isMain } = req.body;
 
       // Валидация
       if (!phone || typeof phone !== "string" || phone.trim() === "")
@@ -45,7 +45,14 @@ storePhoneRoute.post(
       if (existingPhone)
         return res.status(409).send({ message: "Этот телефон уже существует" });
 
-      await StorePhoneModel.create({ phone: cleanedPhone, name });
+      const phonesIsMain = await StorePhoneModel.findAll({
+        where: { isMain: true },
+      });
+      if (phonesIsMain.length > 0)
+        return res
+          .status(400)
+          .send({ message: "Телефон с показом уже существует" });
+      await StorePhoneModel.create({ phone: cleanedPhone, name, isMain });
       res.status(201).send({ message: "Телефон успешно добавлен" });
     } catch (error) {
       handleControllerError(req.baseUrl, error, res);

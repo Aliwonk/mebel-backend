@@ -4,6 +4,8 @@ import sequelizePOSTGRES from "../../../configs/db.config";
 class StorePhoneModel extends Model {
   public id!: number;
   public phone!: string;
+  public name!: string;
+  public isMain!: boolean;
 
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
@@ -32,6 +34,11 @@ StorePhoneModel.init(
         notEmpty: { msg: "Телефон не может быть пустой строкой" },
         notNull: { msg: "Телефон не может быть пустым" },
       },
+    },
+    isMain: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
     },
   },
   { sequelize: sequelizePOSTGRES, modelName: "store_phones" }

@@ -11,7 +11,7 @@ storeEmailRoute.post(
   Guard,
   async (req: Request, res: Response) => {
     try {
-      const { email } = req.body;
+      const { email, name, isMain } = req.body;
       if (!email || typeof email !== "string" || email.trim() === "")
         return res.status(400).send({ message: "Email не может быть пустым" });
 
@@ -21,13 +21,38 @@ storeEmailRoute.post(
           .status(400)
           .send({ message: "Email должен быть корректным" });
 
-      await StoreEmailModel.create({ email: email.trim() });
+      const emailIsMain = await StoreEmailModel.findAll({
+        where: { isMain: true },
+      });
+
+      if (emailIsMain.length > 0)
+        return res
+          .status(400)
+          .send({ message: "email с показом уже существует" });
+
+      await StoreEmailModel.create({ email: email.trim(), name, isMain });
       res.status(201).send({ message: "Email успешно добавлен" });
     } catch (error) {
       handleControllerError(req.baseUrl, error, res);
     }
   }
 );
+
+storeEmailRoute.put("/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { body } = req;
+
+    const existsEmail = await StoreEmailModel.findByPk(id);
+    if (!existsEmail)
+      return res.status(404).send({ message: "Email не найден" });
+
+    await StoreEmailModel.update({ ...body }, { where: { id } });
+    res.status(200).send({ message: "Данные обновлены" });
+  } catch (error) {
+    handleControllerError(req.baseUrl, error, res);
+  }
+});
 
 storeEmailRoute.get("/all", async (req: Request, res: Response) => {
   try {

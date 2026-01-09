@@ -11,7 +11,7 @@ storeAddressRoute.post(
   Guard,
   async (req: Request, res: Response) => {
     try {
-      const { address } = req.body;
+      const { address, hours } = req.body;
 
       // Валидация
       if (!address || typeof address !== "string" || address.trim() === "")
@@ -25,13 +25,28 @@ storeAddressRoute.post(
       if (address.trim().length > 500)
         return res.status(400).send({ message: "Адрес слишком длинный" });
 
-      await StoreAddressModel.create({ address: address.trim() });
+      await StoreAddressModel.create({ address: address.trim(), hours });
       res.status(201).send({ message: "Адрес успешно добавлен" });
     } catch (error) {
       handleControllerError(req.baseUrl, error, res);
     }
   }
 );
+
+storeAddressRoute.put("/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { body } = req;
+    const existsAddress = await StoreAddressModel.findByPk(id);
+    if (!existsAddress)
+      return res.status(404).send({ message: "Адрес не найден" });
+
+    await StoreAddressModel.update({ ...body }, { where: { id } });
+    res.status(200).send({ message: "Данные обновлены" });
+  } catch (error) {
+    handleControllerError(req.baseUrl, error, res);
+  }
+});
 
 storeAddressRoute.get("/all", async (req: Request, res: Response) => {
   try {
