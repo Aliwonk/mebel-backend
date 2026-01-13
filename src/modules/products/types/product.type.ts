@@ -18,15 +18,22 @@ export interface ProductDimensionInterface {
 }
 
 export interface ProductRequestInterface {
-  name: string;
-  price: number;
-  description: string;
-  catalog_id: number | undefined;
-  catalog: any;
-  category_id: number | undefined;
-  category: any;
-  manufacturer_id: number | undefined;
-  manufacturer: any;
-  dimensions: ProductDimensionInterface;
-  telegram_notification: boolean;
+  name?: string;
+  price?: number;
+  description?: string;
+  catalog_id?: number;
+  category_id?: number;
+  manufacturer_id?: number;
+  telegram_notification?: boolean;
+  dimensions?: {
+    lenght: number;
+    width: number;
+    height: number;
+    depth: number;
+    weight: number;
+  };
+  catalog?: string;
+  category?: string;
+  manufacturer?: string;
+  images_to_delete?: string;
 }

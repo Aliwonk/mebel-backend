@@ -70,7 +70,7 @@ productRoute.post(
             transaction,
           })
         : await ProductCatalogModel.create(
-            { name: JSON.parse(productData.catalog).name },
+            { name: JSON.parse(productData.catalog as string).name },
             { transaction }
           );
 
@@ -82,7 +82,7 @@ productRoute.post(
             transaction,
           })
         : await ProductCategoryModel.create(
-            { name: JSON.parse(productData.category).name },
+            { name: JSON.parse(productData.category as string).name },
             { transaction }
           );
 
@@ -94,7 +94,7 @@ productRoute.post(
             transaction,
           })
         : await ProductManufacturerModel.create(
-            { name: JSON.parse(productData.manufacturer).name },
+            { name: JSON.parse(productData.manufacturer as string).name },
             { transaction }
           );
 
@@ -143,10 +143,12 @@ productRoute.post(
       // Отправка уведолмение в телеграм бот
 
       if (productData.telegram_notification) {
+        console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll();
 
         if (telegramGroups.length > 0) {
+          console.log("Отправка телеграм поста");
           const telegramGroup: TelegramGroupModel = telegramGroups[0];
 
           // Формируем сообщение с информацией о товаре
@@ -228,6 +230,387 @@ productRoute.post(
 
       await transaction.commit();
       res.status(201).send({ message: "Товар создан" });
+    } catch (error) {
+      await transaction.rollback();
+      handleControllerError(req.baseUrl, error, res);
+    }
+  }
+);
+
+productRoute.put(
+  "/:id",
+  Guard,
+  json(),
+  upload.array("images"),
+  async (req: Request, res: Response) => {
+    const transaction = await sequelizePOSTGRES.transaction();
+    try {
+      const { id } = req.params;
+      const productData: ProductRequestInterface = req.body;
+
+      // Проверяем существование товара
+      const existingProduct = await ProductModel.findByPk(id, {
+        include: [
+          {
+            model: ProductCategoryModel,
+            as: "categories",
+            through: { attributes: [] },
+          },
+          {
+            model: ProductManufacturerModel,
+            as: "manufacturers",
+            through: { attributes: [] },
+          },
+          {
+            model: ProductDimensionModel,
+            as: "dimensions",
+          },
+          {
+            model: ProductImageModel,
+            as: "images",
+          },
+        ],
+        transaction,
+      });
+
+      if (!existingProduct) {
+        return res.status(404).send({ message: "Товар не найден" });
+      }
+
+      // Обновление основных данных товара
+      if (
+        productData.name ||
+        productData.price !== undefined ||
+        productData.description !== undefined
+      ) {
+        await existingProduct.update(
+          {
+            name: productData.name || existingProduct.dataValues.name,
+            price:
+              productData.price !== undefined
+                ? productData.price
+                : existingProduct.dataValues.price,
+            description:
+              productData.description !== undefined
+                ? productData.description
+                : existingProduct.dataValues.description,
+          },
+          { transaction }
+        );
+      }
+
+      // Обновление габаритов
+      if (productData.dimensions) {
+        const existingDimensions = existingProduct.dataValues.dimensions;
+        if (existingDimensions) {
+          await ProductDimensionModel.update(
+            {
+              ...productData.dimensions,
+            },
+            {
+              where: { product_id: id },
+              transaction,
+            }
+          );
+        } else {
+          await ProductDimensionModel.create(
+            {
+              ...productData.dimensions,
+              product_id: Number(id),
+            },
+            { transaction }
+          );
+        }
+      }
+
+      // Обработка категории
+      if (productData.category_id || productData.category) {
+        const productCategory = productData.category_id
+          ? await ProductCategoryModel.findByPk(productData.category_id, {
+              transaction,
+            })
+          : await ProductCategoryModel.create(
+              { name: JSON.parse(productData.category!).name },
+              { transaction }
+            );
+
+        if (!productCategory) {
+          return res.status(404).send({ message: "Категория не найдена" });
+        }
+
+        // Удаляем все связи продукта с категориями и добавляем новую
+        await sequelizePOSTGRES.query(
+          "DELETE FROM product_categories WHERE product_id = ?",
+          {
+            replacements: [id],
+            transaction,
+          }
+        );
+
+        await sequelizePOSTGRES.query(
+          "INSERT INTO product_categories (product_id, category_id) VALUES (?, ?)",
+          {
+            replacements: [id, productCategory.dataValues.id],
+            transaction,
+          }
+        );
+
+        // Обработка каталога для категории
+        if (productData.catalog_id || productData.catalog) {
+          const productCatalog = productData.catalog_id
+            ? await ProductCatalogModel.findByPk(productData.catalog_id, {
+                transaction,
+              })
+            : await ProductCatalogModel.create(
+                { name: JSON.parse(productData.catalog!).name },
+                { transaction }
+              );
+
+          if (!productCatalog) {
+            return res.status(404).send({ message: "Каталог не найден" });
+          }
+
+          // Удаляем старые связи категории с каталогами
+          await sequelizePOSTGRES.query(
+            "DELETE FROM catalog_categories WHERE category_id = ?",
+            {
+              replacements: [productCategory.dataValues.id],
+              transaction,
+            }
+          );
+
+          // Добавляем новую связь категории с каталогом
+          await sequelizePOSTGRES.query(
+            "INSERT INTO catalog_categories (catalog_id, category_id) VALUES (?, ?)",
+            {
+              replacements: [
+                productCatalog.dataValues.id,
+                productCategory.dataValues.id,
+              ],
+              transaction,
+            }
+          );
+        }
+      }
+
+      // Обработка производителя
+      if (productData.manufacturer_id || productData.manufacturer) {
+        const productManufacturer = productData.manufacturer_id
+          ? await ProductManufacturerModel.findByPk(
+              productData.manufacturer_id,
+              {
+                transaction,
+              }
+            )
+          : await ProductManufacturerModel.create(
+              { name: JSON.parse(productData.manufacturer!).name },
+              { transaction }
+            );
+
+        if (!productManufacturer) {
+          return res.status(404).send({ message: "Производитель не найден" });
+        }
+
+        // Удаляем все связи продукта с производителями и добавляем нового
+        await sequelizePOSTGRES.query(
+          "DELETE FROM product_manufacturers WHERE product_id = ?",
+          {
+            replacements: [id],
+            transaction,
+          }
+        );
+
+        await sequelizePOSTGRES.query(
+          "INSERT INTO product_manufacturers (product_id, manufacturer_id) VALUES (?, ?)",
+          {
+            replacements: [id, productManufacturer.dataValues.id],
+            transaction,
+          }
+        );
+      }
+
+      // Обработка удаления изображений
+      if (productData.images_to_delete) {
+        const imagesToDelete = JSON.parse(
+          productData.images_to_delete as string
+        );
+
+        for (const imageId of imagesToDelete) {
+          const image = await ProductImageModel.findByPk(imageId, {
+            transaction,
+          });
+          if (image) {
+            // Удаляем файл из файловой системы
+            const seperatUrl = image.dataValues.url.split("/");
+            const filename = seperatUrl[seperatUrl.length - 1];
+            const pathFile = join(process.cwd(), "uploads", "images", filename);
+
+            if (existsSync(pathFile)) {
+              await unlink(pathFile);
+            }
+
+            // Удаляем запись из базы данных
+            await ProductImageModel.destroy({
+              where: { id: imageId },
+              transaction,
+            });
+          }
+        }
+      }
+
+      // Добавление новых изображений
+      if (req.files && (req.files as Express.Multer.File[]).length > 0) {
+        const images = (req.files as Express.Multer.File[]).map((file) => ({
+          url: `${process.env.SERVER_URL}/product/image/${file.filename}`,
+          size: file.size,
+          product_id: Number(id),
+        }));
+
+        await ProductImageModel.bulkCreate(images, {
+          transaction,
+        });
+      }
+
+      // Отправка уведомления в телеграм (если включено)
+      if (productData.telegram_notification) {
+        const telegramGroups: Array<TelegramGroupModel> =
+          await TelegramGroupModel.findAll({ transaction });
+
+        if (telegramGroups.length > 0) {
+          const telegramGroup: TelegramGroupModel = telegramGroups[0];
+
+          // Получаем обновленный товар с полными данными
+          const updatedProduct = await ProductModel.findByPk(id, {
+            include: [
+              {
+                model: ProductCategoryModel,
+                as: "categories",
+                through: { attributes: [] },
+              },
+              {
+                model: ProductManufacturerModel,
+                as: "manufacturers",
+                through: { attributes: [] },
+              },
+              {
+                model: ProductImageModel,
+                as: "images",
+              },
+            ],
+            transaction,
+          });
+
+          if (updatedProduct) {
+            const category = updatedProduct.dataValues.categories?.[0];
+            const manufacturer = updatedProduct.dataValues.manufacturers?.[0];
+            const images = updatedProduct.dataValues.images || [];
+
+            const categoryName = category?.name?.replace(/\s/g, "") || "";
+            const manufacturerName =
+              manufacturer?.name?.replace(/\s/g, "") || "";
+
+            const message =
+              `🔄 *Товар обновлен!* #${categoryName} #${manufacturerName} \n\n` +
+              `📦 *Название:* ${updatedProduct.dataValues.name}\n` +
+              `💰 *Цена:* ${updatedProduct.dataValues.price} руб.\n\n` +
+              `📝 *Описание:*\n ${
+                updatedProduct.dataValues.description || "Нет описания"
+              }\n\n`;
+
+            const keyboard = {
+              inline_keyboard: [
+                [
+                  {
+                    text: "✅ Посмотреть товар",
+                    url: `${process.env.CLIENT_URL}/product/${id}`,
+                  },
+                ],
+              ],
+            };
+
+            let telegramResult;
+
+            if (images.length > 0) {
+              if (images.length === 1) {
+                telegramResult = await telegram.sendPhotoWithCaption(
+                  Number(telegramGroup.dataValues.chat_id),
+                  images[0].url,
+                  message,
+                  keyboard
+                );
+              } else {
+                const media = images.map((image: any, index: number) => ({
+                  type: "photo",
+                  media: image.url,
+                  caption: index === 0 ? message : undefined,
+                  parse_mode: "Markdown",
+                }));
+
+                telegramResult = await telegram.sendMediaGroup(
+                  Number(telegramGroup.dataValues.chat_id),
+                  media
+                );
+
+                if (telegramResult.ok) {
+                  const buttonsMessage = `Для деталей нажмите кнопку ниже 👇`;
+                  await telegram.sendMessageWithInlineKeyboard(
+                    Number(telegramGroup.dataValues.chat_id),
+                    buttonsMessage,
+                    keyboard
+                  );
+                }
+              }
+            } else {
+              telegramResult = await telegram.sendMessageWithInlineKeyboard(
+                Number(telegramGroup.dataValues.chat_id),
+                message,
+                keyboard
+              );
+            }
+          }
+        }
+      }
+
+      await transaction.commit();
+
+      // Получаем обновленный товар с полными данными для ответа
+      const updatedProduct = await ProductModel.findByPk(id, {
+        include: [
+          {
+            model: ProductCategoryModel,
+            as: "categories",
+            through: { attributes: [] },
+            attributes: ["id", "name"],
+            include: [
+              {
+                model: ProductCatalogModel,
+                as: "catalogs",
+                through: { attributes: [] },
+                attributes: ["id", "name"],
+              },
+            ],
+          },
+          {
+            model: ProductManufacturerModel,
+            as: "manufacturers",
+            through: { attributes: [] },
+            attributes: ["id", "name"],
+          },
+          {
+            model: ProductDimensionModel,
+            as: "dimensions",
+          },
+          {
+            model: ProductImageModel,
+            as: "images",
+          },
+        ],
+      });
+
+      res.status(200).send({
+        message: "Товар успешно обновлен",
+        data: updatedProduct?.dataValues,
+      });
     } catch (error) {
       await transaction.rollback();
       handleControllerError(req.baseUrl, error, res);

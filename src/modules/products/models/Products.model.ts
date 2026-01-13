@@ -1,3 +1,4 @@
+// models/Products.model.ts
 import { DataTypes, Model } from "sequelize";
 import sequelizePOSTGRES from "../../../configs/db.config";
 
@@ -5,7 +6,13 @@ class ProductModel extends Model {
   public id!: number;
   public name!: string;
   public price!: number;
-  public quantity!: number;
+  public description?: string;
+
+  // Ассоциации будут добавлены позже через методы класса
+  public readonly categories?: any[];
+  public readonly manufacturers?: any[];
+  public readonly dimensions?: any;
+  public readonly images?: any[];
 }
 
 ProductModel.init(
