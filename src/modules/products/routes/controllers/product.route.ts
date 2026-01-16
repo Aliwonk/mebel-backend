@@ -149,10 +149,7 @@ productRoute.post(
 
       // Отправка уведолмение в телеграм бот
 
-      if (
-        productData.telegram_notification &&
-        productData.telegram_notification === true
-      ) {
+      if (productData.telegram_notification) {
         console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll();
