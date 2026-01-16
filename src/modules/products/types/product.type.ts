@@ -26,7 +26,7 @@ export interface ProductRequestInterface {
   manufacturer_id?: number;
   telegram_notification?: boolean;
   dimensions?: {
-    lenght: number;
+    length: number;
     width: number;
     height: number;
     depth: number;

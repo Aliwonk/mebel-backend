@@ -1,6 +1,6 @@
 import { Router, json, Request, Response } from "express";
 import * as multer from "multer";
-import { Op } from "sequelize";
+import { Op, Transaction } from "sequelize";
 import ProductModel from "../../models/Products.model";
 import { imageFileFilter, storageImage } from "../../../../utils/upload.util";
 import { handleControllerError } from "../../../../utils/error.utils";
@@ -112,11 +112,18 @@ productRoute.post(
         { transaction }
       );
 
-      console.log("Характеристики: ", productData.dimensions);
+      const dimensions =
+        typeof productData.dimensions === "string"
+          ? JSON.parse(productData.dimensions)
+          : productData.dimensions;
 
       await ProductDimensionModel.create(
         {
-          ...productData.dimensions,
+          length: dimensions.length,
+          width: dimensions.width,
+          height: dimensions.height,
+          weight: dimensions.weight,
+          depth: dimensions.depth,
           product_id: product.dataValues.id,
         },
         { transaction }
@@ -142,7 +149,10 @@ productRoute.post(
 
       // Отправка уведолмение в телеграм бот
 
-      if (productData.telegram_notification) {
+      if (
+        productData.telegram_notification &&
+        productData.telegram_notification === true
+      ) {
         console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll();
@@ -167,9 +177,9 @@ productRoute.post(
             `📝 *Описание:*\n ${
               productData.description || "Нет описания"
             }\n\n` +
-            `📏 *Размеры (ШxГxВ):* ${productData.dimensions?.width || 0}x${
-              productData.dimensions?.depth || 0
-            }x${productData.dimensions?.height || 0} мм`;
+            `📏 *Размеры (ШxГxВ):* ${dimensions?.width || 0}x${
+              dimensions?.depth || 0
+            }x${dimensions?.height || 0} мм`;
 
           const keyboard = {
             inline_keyboard: [
@@ -186,7 +196,6 @@ productRoute.post(
 
           if (images.length > 0) {
             if (images.length === 1) {
-              // Если фото одно - отправляем с подписью и кнопками
               telegramResult = await telegram.sendPhotoWithCaption(
                 Number(telegramGroup.dataValues.chat_id),
                 images[0].url,
@@ -194,7 +203,6 @@ productRoute.post(
                 keyboard
               );
             } else {
-              // Если фото несколько - отправляем альбом
               const media = images.map((image, index) => ({
                 type: "photo",
                 media: image.url,
@@ -207,7 +215,6 @@ productRoute.post(
                 media
               );
 
-              // После альбома отправляем сообщение с кнопками
               if (telegramResult.ok) {
                 const buttonsMessage = `Для деталей нажмите кнопку ниже 👇`;
                 await telegram.sendMessageWithInlineKeyboard(
@@ -218,7 +225,6 @@ productRoute.post(
               }
             }
           } else {
-            // Если фото нет - отправляем только текстовое сообщение
             telegramResult = await telegram.sendMessageWithInlineKeyboard(
               Number(telegramGroup.dataValues.chat_id),
               message,
@@ -274,6 +280,7 @@ productRoute.put(
       });
 
       if (!existingProduct) {
+        await transaction.rollback();
         return res.status(404).send({ message: "Товар не найден" });
       }
 
@@ -325,108 +332,100 @@ productRoute.put(
 
       // Обработка категории
       if (productData.category_id || productData.category) {
-        const productCategory = productData.category_id
-          ? await ProductCategoryModel.findByPk(productData.category_id, {
-              transaction,
-            })
-          : await ProductCategoryModel.create(
-              { name: JSON.parse(productData.category!).name },
-              { transaction }
-            );
+        await ProductCategoryModel.destroy({
+          where: { product_id: id },
+          transaction,
+        });
 
-        if (!productCategory) {
-          return res.status(404).send({ message: "Категория не найдена" });
+        if (productData.catalog_id) {
+          await ProductCategoryModel.update(
+            {
+              priduct_id: Number(id),
+            },
+            { where: { id: productData.category_id } }
+          );
         }
 
-        // Удаляем все связи продукта с категориями и добавляем новую
-        await sequelizePOSTGRES.query(
-          "DELETE FROM product_categories WHERE product_id = ?",
-          {
-            replacements: [id],
-            transaction,
-          }
-        );
+        if (productData.catalog) {
+          await ProductCategoryModel.create(
+            {
+              name: JSON.parse(productData.category!).name,
+              product_id: Number(id),
+            },
+            { transaction }
+          );
+        }
+        // const productCategory = productData.category_id
+        //   ? await ProductCategoryModel.findByPk(productData.category_id, {
+        //       transaction,
+        //     })
+        //   :
 
-        await sequelizePOSTGRES.query(
-          "INSERT INTO product_categories (product_id, category_id) VALUES (?, ?)",
-          {
-            replacements: [id, productCategory.dataValues.id],
-            transaction,
-          }
-        );
+        // if (!productCategory) {
+        //   await transaction.rollback();
+        //   return res.status(404).send({ message: "Категория не найдена" });
+        // }
+
+        // // Устанавливаем категорию для продукта (удаляет старые и добавляет новую)
+        // await ProductCategoryModel.destroy({
+        //   where: { product_id: id },
+        // });
 
         // Обработка каталога для категории
-        if (productData.catalog_id || productData.catalog) {
-          const productCatalog = productData.catalog_id
-            ? await ProductCatalogModel.findByPk(productData.catalog_id, {
-                transaction,
-              })
-            : await ProductCatalogModel.create(
-                { name: JSON.parse(productData.catalog!).name },
-                { transaction }
-              );
+        // if (productData.catalog_id || productData.catalog) {
+        //   const productCatalog = productData.catalog_id
+        //     ? await ProductCatalogModel.findByPk(productData.catalog_id, {
+        //         transaction,
+        //       })
+        //     : await ProductCatalogModel.create(
+        //         { name: JSON.parse(productData.catalog!).name },
+        //         { transaction }
+        //       );
 
-          if (!productCatalog) {
-            return res.status(404).send({ message: "Каталог не найден" });
-          }
+        //   if (!productCatalog) {
+        //     await transaction.rollback();
+        //     return res.status(404).send({ message: "Каталог не найден" });
+        //   }
 
-          // Удаляем старые связи категории с каталогами
-          await sequelizePOSTGRES.query(
-            "DELETE FROM catalog_categories WHERE category_id = ?",
-            {
-              replacements: [productCategory.dataValues.id],
-              transaction,
-            }
-          );
-
-          // Добавляем новую связь категории с каталогом
-          await sequelizePOSTGRES.query(
-            "INSERT INTO catalog_categories (catalog_id, category_id) VALUES (?, ?)",
-            {
-              replacements: [
-                productCatalog.dataValues.id,
-                productCategory.dataValues.id,
-              ],
-              transaction,
-            }
-          );
-        }
+        //   // Устанавливаем каталог для категории (удаляет старые и добавляет новый)
+        //   await ProductCatalogModel.destroy({ where: { category_id } })
+        //   await productCategory.setCatalogs([productCatalog], { transaction });
+        // }
       }
 
       // Обработка производителя
       if (productData.manufacturer_id || productData.manufacturer) {
-        const productManufacturer = productData.manufacturer_id
-          ? await ProductManufacturerModel.findByPk(
-              productData.manufacturer_id,
-              {
-                transaction,
-              }
-            )
-          : await ProductManufacturerModel.create(
-              { name: JSON.parse(productData.manufacturer!).name },
-              { transaction }
-            );
+        await ProductManufacturerModel.destroy({
+          where: { product_id: id },
+          transaction,
+        });
 
-        if (!productManufacturer) {
-          return res.status(404).send({ message: "Производитель не найден" });
+        if (productData.manufacturer_id) {
+          // await ProductManufacturerModel.update({
+          //   product_id: Number(id)
+          // })
         }
+        // const productManufacturer = productData.manufacturer_id
+        //   ? await ProductManufacturerModel.findByPk(
+        //       productData.manufacturer_id,
+        //       {
+        //         transaction,
+        //       }
+        //     )
+        //   : await ProductManufacturerModel.create(
+        //       { name: JSON.parse(productData.manufacturer!).name },
+        //       { transaction }
+        //     );
 
-        // Удаляем все связи продукта с производителями и добавляем нового
-        await sequelizePOSTGRES.query(
-          "DELETE FROM product_manufacturers WHERE product_id = ?",
-          {
-            replacements: [id],
-            transaction,
-          }
-        );
+        // if (!productManufacturer) {
+        //   await transaction.rollback();
+        //   return res.status(404).send({ message: "Производитель не найден" });
+        // }
 
-        await sequelizePOSTGRES.query(
-          "INSERT INTO product_manufacturers (product_id, manufacturer_id) VALUES (?, ?)",
-          {
-            replacements: [id, productManufacturer.dataValues.id],
-            transaction,
-          }
-        );
+        // // Устанавливаем производителя для продукта (удаляет старых и добавляет нового)
+        // await existingProduct.setManufacturers([productManufacturer], {
+        //   transaction,
+        // });
       }
 
       // Обработка удаления изображений
@@ -817,20 +816,69 @@ productRoute.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
+// productRoute.delete("/:id", async (req: Request, res: Response) => {
+//   const transaction = await sequelizePOSTGRES.transaction();
+//   let copyFiles: Array<{ path: string; data: Buffer }> = [];
+//   try {
+//     const { id } = req.params;
+//     const existsProduct = await ProductModel.findByPk(id);
+//     if (!existsProduct)
+//       return res.status(404).send({ message: "Товар не найден" });
+
+//     const imagesProduct = await ProductImageModel.findAll({
+//       where: { product_id: id },
+//     });
+
+//     for (const image of imagesProduct) {
+//       const seperatUrl = image.dataValues.url.split("/");
+//       const filename = seperatUrl[seperatUrl.length - 1];
+//       const pathFile = join(process.cwd(), "uploads", "images", filename);
+//       const existsFile = existsSync(pathFile);
+
+//       if (existsFile) {
+//         const copyFile: Buffer = await readFile(pathFile);
+//         copyFiles.push({
+//           path: pathFile,
+//           data: copyFile,
+//         });
+//         await unlink(pathFile);
+//         await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
+//       } else {
+//         await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
+//       }
+//     }
+//     copyFiles = [];
+
+//     await ProductModel.destroy({ where: { id: id } });
+//     res.status(200).send({ message: "Товар удален" });
+//   } catch (error) {
+//     await transaction.rollback();
+//     for (const file of copyFiles) {
+//       await writeFile(file.path, file.data);
+//     }
+//     handleControllerError(req.baseUrl, error, res);
+//   }
+// });
+
 productRoute.delete("/:id", async (req: Request, res: Response) => {
-  const transaction = await sequelizePOSTGRES.transaction();
+  let transaction: Transaction | null = null;
   let copyFiles: Array<{ path: string; data: Buffer }> = [];
+
   try {
     const { id } = req.params;
+
     const existsProduct = await ProductModel.findByPk(id);
     if (!existsProduct)
       return res.status(404).send({ message: "Товар не найден" });
 
+    transaction = await sequelizePOSTGRES.transaction();
+
     const imagesProduct = await ProductImageModel.findAll({
       where: { product_id: id },
+      transaction,
     });
 
-    for (const image of imagesProduct) {
+    const fileOperations = imagesProduct.map(async (image) => {
       const seperatUrl = image.dataValues.url.split("/");
       const filename = seperatUrl[seperatUrl.length - 1];
       const pathFile = join(process.cwd(), "uploads", "images", filename);
@@ -843,21 +891,47 @@ productRoute.delete("/:id", async (req: Request, res: Response) => {
           data: copyFile,
         });
         await unlink(pathFile);
-        await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
-      } else {
-        await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
       }
-    }
+
+      await ProductImageModel.destroy({
+        where: { id: image.dataValues.id },
+        transaction,
+      });
+    });
+
+    await Promise.all(fileOperations);
+
+    await ProductModel.destroy({
+      where: { id: id },
+      transaction,
+    });
+
+    await transaction.commit();
+
     copyFiles = [];
 
-    await ProductModel.destroy({ where: { id: id } });
     res.status(200).send({ message: "Товар удален" });
   } catch (error) {
-    await transaction.rollback();
-    for (const file of copyFiles) {
-      await writeFile(file.path, file.data);
+    if (transaction) {
+      await transaction.rollback();
     }
+
+    if (copyFiles.length > 0) {
+      try {
+        const restoreOperations = copyFiles.map(async (file) => {
+          await writeFile(file.path, file.data);
+        });
+        await Promise.all(restoreOperations);
+      } catch (restoreError) {
+        console.error("File restore failed:", restoreError);
+      }
+    }
+
+    await sequelizePOSTGRES.connectionManager.close();
+
     handleControllerError(req.baseUrl, error, res);
+  } finally {
+    copyFiles = [];
   }
 });
 

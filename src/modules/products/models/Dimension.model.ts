@@ -2,7 +2,18 @@ import { DataTypes, Model } from "sequelize";
 import sequelizePOSTGRES from "../../../configs/db.config";
 import ProductModel from "./Products.model";
 
-class ProductDimensionModel extends Model {}
+class ProductDimensionModel extends Model {
+  public id!: number;
+  public length!: number;
+  public width!: number;
+  public height!: number;
+  public weight!: number;
+  public depth!: number;
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
+
+  public readonly product?: ProductModel;
+}
 
 ProductDimensionModel.init(
   {
