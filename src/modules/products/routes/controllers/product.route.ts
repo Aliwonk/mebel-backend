@@ -306,10 +306,14 @@ productRoute.put(
       // Обновление габаритов
       if (productData.dimensions) {
         const existingDimensions = existingProduct.dataValues.dimensions;
+        const dimensions =
+          typeof productData.dimensions === "string"
+            ? JSON.parse(productData.dimensions)
+            : productData.dimensions;
         if (existingDimensions) {
           await ProductDimensionModel.update(
             {
-              ...productData.dimensions,
+              ...dimensions,
             },
             {
               where: { product_id: id },
@@ -319,7 +323,7 @@ productRoute.put(
         } else {
           await ProductDimensionModel.create(
             {
-              ...productData.dimensions,
+              ...dimensions,
               product_id: Number(id),
             },
             { transaction }
@@ -329,100 +333,65 @@ productRoute.put(
 
       // Обработка категории
       if (productData.category_id || productData.category) {
-        await ProductCategoryModel.destroy({
-          where: { product_id: id },
-          transaction,
-        });
+        const category = productData.category_id
+          ? await ProductCategoryModel.findByPk(productData.category_id)
+          : await ProductCategoryModel.create({
+              name: JSON.parse(productData.category as string).name,
+            });
 
-        if (productData.catalog_id) {
-          await ProductCategoryModel.update(
-            {
-              priduct_id: Number(id),
-            },
-            { where: { id: productData.category_id } }
-          );
-        }
+        if (!category)
+          return res.status(404).send({ message: "Категория не найдена" });
 
-        if (productData.catalog) {
-          await ProductCategoryModel.create(
-            {
-              name: JSON.parse(productData.category!).name,
-              product_id: Number(id),
-            },
-            { transaction }
-          );
-        }
-        // const productCategory = productData.category_id
-        //   ? await ProductCategoryModel.findByPk(productData.category_id, {
-        //       transaction,
-        //     })
-        //   :
-
-        // if (!productCategory) {
-        //   await transaction.rollback();
-        //   return res.status(404).send({ message: "Категория не найдена" });
-        // }
-
-        // // Устанавливаем категорию для продукта (удаляет старые и добавляет новую)
-        // await ProductCategoryModel.destroy({
-        //   where: { product_id: id },
-        // });
-
-        // Обработка каталога для категории
         // if (productData.catalog_id || productData.catalog) {
-        //   const productCatalog = productData.catalog_id
-        //     ? await ProductCatalogModel.findByPk(productData.catalog_id, {
-        //         transaction,
-        //       })
-        //     : await ProductCatalogModel.create(
-        //         { name: JSON.parse(productData.catalog!).name },
-        //         { transaction }
-        //       );
+        //   const catalog = productData.catalog_id
+        //     ? await ProductCatalogModel.findByPk(productData.catalog_id)
+        //     : await ProductCatalogModel.create({
+        //         name: JSON.parse(productData.catalog as string).name,
+        //       });
 
-        //   if (!productCatalog) {
-        //     await transaction.rollback();
-        //     return res.status(404).send({ message: "Каталог не найден" });
-        //   }
+        //   if (!catalog)
+        //     return res.status(404).send({ message: "Каталога не найден" });
 
-        //   // Устанавливаем каталог для категории (удаляет старые и добавляет новый)
-        //   await ProductCatalogModel.destroy({ where: { category_id } })
-        //   await productCategory.setCatalogs([productCatalog], { transaction });
+        //   console.log(productData);
+        //   console.log(category.dataValues.id);
+        //   console.log(productData.category_id);
+        //   await sequelizePOSTGRES.query(
+        //     `UPDATE catalog_mtm_category SET category_id = '${productData.category_id}' WHERE catalog_id = '${catalog.dataValues.id}'`,
+        //     {
+        //       transaction,
+        //     }
+        //   );
         // }
+
+        await sequelizePOSTGRES.query(
+          `UPDATE product_mtm_category SET category_id = '${
+            category.dataValues.id
+          }' WHERE product_id = '${Number(id)}'`,
+          {
+            transaction,
+          }
+        );
       }
 
       // Обработка производителя
       if (productData.manufacturer_id || productData.manufacturer) {
-        await ProductManufacturerModel.destroy({
-          where: { product_id: id },
-          transaction,
-        });
+        const manufacturer = productData.manufacturer_id
+          ? await ProductCategoryModel.findByPk(productData.manufacturer_id)
+          : await ProductCategoryModel.create({
+              name: JSON.parse(productData.manufacturer as string).name,
+            });
 
-        if (productData.manufacturer_id) {
-          // await ProductManufacturerModel.update({
-          //   product_id: Number(id)
-          // })
-        }
-        // const productManufacturer = productData.manufacturer_id
-        //   ? await ProductManufacturerModel.findByPk(
-        //       productData.manufacturer_id,
-        //       {
-        //         transaction,
-        //       }
-        //     )
-        //   : await ProductManufacturerModel.create(
-        //       { name: JSON.parse(productData.manufacturer!).name },
-        //       { transaction }
-        //     );
+        if (!manufacturer)
+          return res.status(404).send({ message: "Категория не найдена" });
 
-        // if (!productManufacturer) {
-        //   await transaction.rollback();
-        //   return res.status(404).send({ message: "Производитель не найден" });
-        // }
-
-        // // Устанавливаем производителя для продукта (удаляет старых и добавляет нового)
-        // await existingProduct.setManufacturers([productManufacturer], {
-        //   transaction,
-        // });
+        await sequelizePOSTGRES.query(
+          `UPDATE product_mtm_manufacturer SET manufacturer_id = '${
+            manufacturer.dataValues.id
+          }' WHERE product_id = '${Number(id)}'`,
+          {
+            transaction,
+          }
+        );
       }
 
       // Обработка удаления изображений
@@ -469,6 +438,7 @@ productRoute.put(
 
       // Отправка уведомления в телеграм (если включено)
       if (productData.telegram_notification) {
+        console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll({ transaction });
 
@@ -783,14 +753,6 @@ productRoute.get("/:id", async (req: Request, res: Response) => {
           as: "categories",
           through: { attributes: [] },
           attributes: ["id", "name"],
-          include: [
-            {
-              model: ProductCatalogModel,
-              as: "catalogs",
-              through: { attributes: [] },
-              attributes: ["id", "name"],
-            },
-          ],
         },
         {
           model: ProductManufacturerModel,
@@ -808,56 +770,42 @@ productRoute.get("/:id", async (req: Request, res: Response) => {
         },
       ],
     });
+
+    const catalogs = await ProductCatalogModel.findAll({
+      include: [
+        {
+          model: ProductCategoryModel,
+          as: "categories",
+          through: { attributes: [] },
+          attributes: ["id", "name"],
+        },
+      ],
+    });
+
+    const productCatalog = catalogs.find((catalog) =>
+      catalog.dataValues.categories.some((category: any) => {
+        return product?.dataValues.categories.some(
+          (prodCat: any) => prodCat.id === category.id
+        );
+      })
+    );
+
     if (!product) return res.status(404).send({ message: "Товар не найден" });
-    res.status(200).send({ data: product.dataValues });
+    res.status(200).send({
+      data: {
+        ...product.dataValues,
+        catalogs: [
+          {
+            id: productCatalog?.dataValues.id,
+            name: productCatalog?.dataValues.name,
+          },
+        ],
+      },
+    });
   } catch (error) {
     handleControllerError(req.baseUrl, error, res);
   }
 });
-
-// productRoute.delete("/:id", async (req: Request, res: Response) => {
-//   const transaction = await sequelizePOSTGRES.transaction();
-//   let copyFiles: Array<{ path: string; data: Buffer }> = [];
-//   try {
-//     const { id } = req.params;
-//     const existsProduct = await ProductModel.findByPk(id);
-//     if (!existsProduct)
-//       return res.status(404).send({ message: "Товар не найден" });
-
-//     const imagesProduct = await ProductImageModel.findAll({
-//       where: { product_id: id },
-//     });
-
-//     for (const image of imagesProduct) {
-//       const seperatUrl = image.dataValues.url.split("/");
-//       const filename = seperatUrl[seperatUrl.length - 1];
-//       const pathFile = join(process.cwd(), "uploads", "images", filename);
-//       const existsFile = existsSync(pathFile);
-
-//       if (existsFile) {
-//         const copyFile: Buffer = await readFile(pathFile);
-//         copyFiles.push({
-//           path: pathFile,
-//           data: copyFile,
-//         });
-//         await unlink(pathFile);
-//         await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
-//       } else {
-//         await ProductImageModel.destroy({ where: { id: image.dataValues.id } });
-//       }
-//     }
-//     copyFiles = [];
-
-//     await ProductModel.destroy({ where: { id: id } });
-//     res.status(200).send({ message: "Товар удален" });
-//   } catch (error) {
-//     await transaction.rollback();
-//     for (const file of copyFiles) {
-//       await writeFile(file.path, file.data);
-//     }
-//     handleControllerError(req.baseUrl, error, res);
-//   }
-// });
 
 productRoute.delete("/:id", async (req: Request, res: Response) => {
   let transaction: Transaction | null = null;
