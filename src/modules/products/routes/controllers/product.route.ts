@@ -702,7 +702,7 @@ productRoute.get("/all", async (req: Request, res: Response) => {
     queryOptions.distinct = true;
 
     if (search) {
-      const products = await ProductModel.findAll({
+      const products = await ProductModel.findAndCountAll({
         where: {
           name: { [Op.like]: `%${search}%` },
         },
@@ -736,12 +736,14 @@ productRoute.get("/all", async (req: Request, res: Response) => {
             as: "images",
           },
         ],
+        limit: Number(limit),
+        offset: offset,
       });
       return res.status(200).send({
-        data: products,
-        count: products.length,
+        data: products.rows,
+        count: products.count,
         page: Number(page),
-        totalPages: Math.ceil(products.length / Number(limit)),
+        totalPages: Math.ceil(products.count / Number(limit)),
       });
     }
 
