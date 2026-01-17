@@ -149,7 +149,7 @@ productRoute.post(
 
       // Отправка уведолмение в телеграм бот
 
-      if (productData.telegram_notification) {
+      if (JSON.parse(productData.telegram_notification as any)) {
         console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll();
@@ -336,7 +336,7 @@ productRoute.put(
         const category = productData.category_id
           ? await ProductCategoryModel.findByPk(productData.category_id)
           : await ProductCategoryModel.create({
-              name: JSON.parse(productData.category as string).name,
+              name: JSON.parse(productData.category as string),
             });
 
         if (!category)
@@ -378,7 +378,7 @@ productRoute.put(
         const manufacturer = productData.manufacturer_id
           ? await ProductCategoryModel.findByPk(productData.manufacturer_id)
           : await ProductCategoryModel.create({
-              name: JSON.parse(productData.manufacturer as string).name,
+              name: JSON.parse(productData.manufacturer as string),
             });
 
         if (!manufacturer)
@@ -437,7 +437,8 @@ productRoute.put(
       }
 
       // Отправка уведомления в телеграм (если включено)
-      if (productData.telegram_notification) {
+
+      if (JSON.parse(productData.telegram_notification as any)) {
         console.log("Телеграм уведомление включена");
         const telegramGroups: Array<TelegramGroupModel> =
           await TelegramGroupModel.findAll({ transaction });
