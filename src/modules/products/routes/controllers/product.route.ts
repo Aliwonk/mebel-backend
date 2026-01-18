@@ -71,7 +71,7 @@ productRoute.post(
           })
         : await ProductCatalogModel.create(
             { name: JSON.parse(productData.catalog as string).name },
-            { transaction }
+            { transaction },
           );
 
       if (!productCatalog)
@@ -83,7 +83,7 @@ productRoute.post(
           })
         : await ProductCategoryModel.create(
             { name: JSON.parse(productData.category as string).name },
-            { transaction }
+            { transaction },
           );
 
       if (!productCategory)
@@ -95,7 +95,7 @@ productRoute.post(
           })
         : await ProductManufacturerModel.create(
             { name: JSON.parse(productData.manufacturer as string).name },
-            { transaction }
+            { transaction },
           );
 
       if (!productManufacturer)
@@ -109,7 +109,7 @@ productRoute.post(
           price: productData.price,
           description: productData.description,
         },
-        { transaction }
+        { transaction },
       );
 
       const dimensions =
@@ -126,7 +126,7 @@ productRoute.post(
           depth: dimensions.depth,
           product_id: product.dataValues.id,
         },
-        { transaction }
+        { transaction },
       );
 
       let images: Array<{ url: string; size: number; product_id: number }> = [];
@@ -159,16 +159,22 @@ productRoute.post(
           const telegramGroup: TelegramGroupModel = telegramGroups[0];
 
           // Формируем сообщение с информацией о товаре
+
+          const catalogName = productCatalog.dataValues.name.replace(/\s/g, "");
           const categoryName = productCategory.dataValues.name.replace(
             /\s/g,
-            ""
+            "",
           );
           const manufacturerName = productManufacturer.dataValues.name.replace(
             /\s/g,
-            ""
+            "",
           );
+          const hashTagManufacturer =
+            manufacturerName && manufacturerName !== "Неизвестно"
+              ? `#${manufacturerName}`
+              : "";
           const message =
-            `🎉 *Добавлен товар!* #${categoryName} #${manufacturerName} \n\n` +
+            `🎉 *Добавлен товар!* #${catalogName} #${categoryName} ${hashTagManufacturer} \n\n` +
             `📦 *Название:* ${productData.name}\n` +
             `💰 *Цена:* ${productData.price} руб.\n\n` +
             `📝 *Описание:*\n ${
@@ -197,7 +203,7 @@ productRoute.post(
                 Number(telegramGroup.dataValues.chat_id),
                 images[0].url,
                 message,
-                keyboard
+                keyboard,
               );
             } else {
               const media = images.map((image, index) => ({
@@ -209,7 +215,7 @@ productRoute.post(
 
               telegramResult = await telegram.sendMediaGroup(
                 Number(telegramGroup.dataValues.chat_id),
-                media
+                media,
               );
 
               if (telegramResult.ok) {
@@ -217,7 +223,7 @@ productRoute.post(
                 await telegram.sendMessageWithInlineKeyboard(
                   Number(telegramGroup.dataValues.chat_id),
                   buttonsMessage,
-                  keyboard
+                  keyboard,
                 );
               }
             }
@@ -225,7 +231,7 @@ productRoute.post(
             telegramResult = await telegram.sendMessageWithInlineKeyboard(
               Number(telegramGroup.dataValues.chat_id),
               message,
-              keyboard
+              keyboard,
             );
           }
         }
@@ -237,7 +243,7 @@ productRoute.post(
       await transaction.rollback();
       handleControllerError(req.baseUrl, error, res);
     }
-  }
+  },
 );
 
 productRoute.put(
@@ -299,7 +305,7 @@ productRoute.put(
                 ? productData.description
                 : existingProduct.dataValues.description,
           },
-          { transaction }
+          { transaction },
         );
       }
 
@@ -318,7 +324,7 @@ productRoute.put(
             {
               where: { product_id: id },
               transaction,
-            }
+            },
           );
         } else {
           await ProductDimensionModel.create(
@@ -326,7 +332,7 @@ productRoute.put(
               ...dimensions,
               product_id: Number(id),
             },
-            { transaction }
+            { transaction },
           );
         }
       }
@@ -369,7 +375,7 @@ productRoute.put(
           }' WHERE product_id = '${Number(id)}'`,
           {
             transaction,
-          }
+          },
         );
       }
 
@@ -390,14 +396,14 @@ productRoute.put(
           }' WHERE product_id = '${Number(id)}'`,
           {
             transaction,
-          }
+          },
         );
       }
 
       // Обработка удаления изображений
       if (productData.images_to_delete) {
         const imagesToDelete = JSON.parse(
-          productData.images_to_delete as string
+          productData.images_to_delete as string,
         );
 
         for (const imageId of imagesToDelete) {
@@ -472,12 +478,18 @@ productRoute.put(
             const manufacturer = updatedProduct.dataValues.manufacturers?.[0];
             const images = updatedProduct.dataValues.images || [];
 
+            const catalogName = category?.catalogs?.[0]?.name
+              ?.replace(/\s/g, "")
+              .toString();
             const categoryName = category?.name?.replace(/\s/g, "") || "";
             const manufacturerName =
               manufacturer?.name?.replace(/\s/g, "") || "";
-
+            const hastagManufacturer =
+              manufacturerName && manufacturerName !== "Неизвестно"
+                ? `#${manufacturerName}`
+                : "";
             const message =
-              `🔄 *Товар обновлен!* #${categoryName} #${manufacturerName} \n\n` +
+              `🔄 *Товар обновлен!* #${catalogName} #${categoryName} ${hastagManufacturer} \n\n` +
               `📦 *Название:* ${updatedProduct.dataValues.name}\n` +
               `💰 *Цена:* ${updatedProduct.dataValues.price} руб.\n\n` +
               `📝 *Описание:*\n ${
@@ -503,7 +515,7 @@ productRoute.put(
                   Number(telegramGroup.dataValues.chat_id),
                   images[0].url,
                   message,
-                  keyboard
+                  keyboard,
                 );
               } else {
                 const media = images.map((image: any, index: number) => ({
@@ -515,7 +527,7 @@ productRoute.put(
 
                 telegramResult = await telegram.sendMediaGroup(
                   Number(telegramGroup.dataValues.chat_id),
-                  media
+                  media,
                 );
 
                 if (telegramResult.ok) {
@@ -523,7 +535,7 @@ productRoute.put(
                   await telegram.sendMessageWithInlineKeyboard(
                     Number(telegramGroup.dataValues.chat_id),
                     buttonsMessage,
-                    keyboard
+                    keyboard,
                   );
                 }
               }
@@ -531,7 +543,7 @@ productRoute.put(
               telegramResult = await telegram.sendMessageWithInlineKeyboard(
                 Number(telegramGroup.dataValues.chat_id),
                 message,
-                keyboard
+                keyboard,
               );
             }
           }
@@ -582,7 +594,7 @@ productRoute.put(
       await transaction.rollback();
       handleControllerError(req.baseUrl, error, res);
     }
-  }
+  },
 );
 
 productRoute.get("/all", async (req: Request, res: Response) => {
@@ -786,9 +798,9 @@ productRoute.get("/:id", async (req: Request, res: Response) => {
     const productCatalog = catalogs.find((catalog) =>
       catalog.dataValues.categories.some((category: any) => {
         return product?.dataValues.categories.some(
-          (prodCat: any) => prodCat.id === category.id
+          (prodCat: any) => prodCat.id === category.id,
         );
-      })
+      }),
     );
 
     if (!product) return res.status(404).send({ message: "Товар не найден" });
